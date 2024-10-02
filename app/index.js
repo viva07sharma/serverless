@@ -31,7 +31,7 @@ const redis = new Redis({
 exports.handler = async (event) => {
     const authHeader = event.headers && event.headers.Authorization; // Assuming the token is passed in the Authorization header
     /*
-    Implment as ALB listerner rule
+    Implment as API Gateway validation rule
     if (!authHeader) {
         return {
             statusCode: 401,
@@ -52,7 +52,7 @@ exports.handler = async (event) => {
     // Retrieve orgId from custom header
     const orgId = event.headers && event.headers.orgId;
     /**
-     * Implement check for orgId as ALB listener rule
+     * Implement check for orgId as API Gateway validation rule
      */
 
     const jobId = event.pathParameters ? event.pathParameters.jobid : null;
@@ -104,19 +104,47 @@ exports.handler = async (event) => {
     }
 
     if (jobId) {
-        //query example
-        /*
         const db = await connectToDatabase();
         const [rows] = await db.query("SELECT t.name FROM tenant t left join client c on t.id=c.tenant_id where c.organization_id='"+orgId+"'");
         if (rows.length > 0) {
-            const tenantName = rows[0].name; // Access the name directly
-            console.log(tenantName); // Log the name to the console
-        }*/
-
-
+            const tenantdbName = "xcl_" + rows[0].name;
+            const [rowsD] = await db.query("SELECT process_state FROM "+tenantdbName+"."+type+" where job_id='"+jobID+"' limit 1");
+            if (rowsD.length > 0) {
+                return {
+                    statusCode: 200,
+                    body: JSON.stringify({ status: rowsD[0].process_state })
+                };
+            } else {
+                return {
+                    statusCode: 400,
+                    body: JSON.stringify({ message: 'Invalid JobID' })
+                };
+            }
+        } else {
+            return {
+                statusCode: 400,
+                body: JSON.stringify({ message: 'Invalid Organization' })
+            };
+        }
     } else {
         const body = JSON.parse(event.body);
         const jobId = uuidv1(); // Generate a job ID
+        // Upload the JSON data to S3
+        const s3Params = {
+            Bucket: process.env.BUCKET_NAME, // Your S3 bucket name , configure as Lamda Environment Variables
+            Key: `data/${jobId}_${type}.json`, // Unique key for the file
+            Body: JSON.stringify(body),
+            ContentType: 'application/json'
+        };
+        const s3Response = await S3.putObject(s3Params).promise();
+
+        // Enqueue the job in SQS with the S3 URL and save jobId in db,  use orgId in sqs consumer to find db
+        const params = {
+            MessageBody: JSON.stringify({ "jobId" : jobId, "s3Path": `/data/${jobId}.json`, "orgId": orgId }),
+            QueueUrl: process.env.QUEUE_URL, // configure as Lamda Environment Variables
+        };
+
+        await SQS.sendMessage(params).promise();
     }
 
 };
