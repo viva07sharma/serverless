@@ -1,6 +1,8 @@
-const jwt = require('jsonwebtoken');
 const mysql = require('mysql2/promise');
 const Redis = require('ioredis');
+import Redis from 'ioredis';
+import mysql from 'mysql2/promise';
+import jsonwebtoken from 'jsonwebtoken';
 
 const TOKEN_EXPIRY = 172800; // Token expiry time (48 hour)
 
@@ -8,10 +10,10 @@ let connection;
 const connectToDatabase = async () => {
     if (!connection) {
         connection = await mysql.createConnection({
-            host: 'your-database-host',
-            user: 'your-database-user',
-            password: 'your-database-password',
-            database: 'your-database-name'
+            host: process.env.DB_HOST,
+            user: process.env.DB_USER,
+            password: process.env.DB_PASSWORD,
+            database: process.env.DB_NAME
         });
     }
     return connection;
@@ -30,20 +32,12 @@ const formatDate = (date) => {
 
 // Initialize Redis client
 const redis = new Redis({
-    host: 'your_redis_host', // Replace with your Redis host
-    port: 6379, // Default Redis port
-    password: 'your_redis_password', // Uncomment if your Redis requires authentication
+    host: process.env.REDIS_HOST, // Replace with your Redis host
+    port: process.env.REDIS_PORT, // Default Redis port
+    password: process.env.REDIS_PASSWORD, // Uncomment if your Redis requires authentication
 });
 
-// Initialize MySQL connection
-const mysqlConfig = {
-    host: 'your_mysql_host', // Replace with your MySQL host
-    user: 'your_mysql_user', // Replace with your MySQL user
-    password: 'your_mysql_password', // Replace with your MySQL password
-    database: 'your_database', // Replace with your database name
-};
-
-exports.handler = async (event) => {
+export const handler = async (event) => {
     //implement API Gateway validation rules
     const { clientId, clientSecret, organizationId } = JSON.parse(event.body);
 
@@ -91,3 +85,7 @@ exports.handler = async (event) => {
         await db.end(); // Ensure the database connection is closed
     }
 };
+
+process.on('exit', () => {
+    redis.disconnect();
+});

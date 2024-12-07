@@ -1,18 +1,22 @@
-const Redis = require('ioredis');
-const mysql = require('mysql2/promise');
-const AWS = require('aws-sdk');
-const S3 = new AWS.S3();
-const SQS = new AWS.SQS();
-const { v1: uuidv1 } = require('uuid');
+import Redis from 'ioredis';
+import mysql from 'mysql2/promise';
+import formidable from 'formidable';
+import { v1 as uuidv1 } from 'uuid';
+//import { S3Client } from '@aws-sdk/client-s3';
+//import { SQSClient } from '@aws-sdk/client-sqs';
+
+// Create clients for S3 and SQS
+//const s3 = new S3Client({ region: 'us-east-1' });
+//const sqs = new SQSClient({ region: 'us-east-1' });
 
 let connection;
 const connectToDatabase = async () => {
     if (!connection) {
         connection = await mysql.createConnection({
-            host: 'your-database-host',
-            user: 'your-database-user',
-            password: 'your-database-password',
-            database: 'your-database-name'
+            host: process.env.DB_HOST,
+            user: process.env.DB_USER,
+            password: process.env.DB_PASSWORD,
+            database: process.env.DB_NAME
         });
     }
     return connection;
@@ -20,15 +24,13 @@ const connectToDatabase = async () => {
 
 // Create the Redis connection outside the handler
 const redis = new Redis({
-    host: 'your-redis-endpoint', // e.g., "my-redis-cluster.abc123.def456.0001.usw2.cache.amazonaws.com"
-    port: 6379, // Default Redis port
-    password: 'your-redis-password', // If applicable
-    // Uncomment if you're using TLS
-    // tls: {} 
+    host: process.env.REDIS_HOST, // Replace with your Redis host
+    port: process.env.REDIS_PORT, // Default Redis port
+    password: process.env.REDIS_PASSWORD, // Uncomment if your Redis requires authentication
 });
 
 
-exports.handler = async (event) => {
+export const handler = async (event) => {
     const authHeader = event.headers && event.headers.Authorization; // Assuming the token is passed in the Authorization header
     /*
     Implment as API Gateway validation rule
@@ -127,20 +129,38 @@ exports.handler = async (event) => {
             };
         }
     } else {
-        const body = JSON.parse(event.body);
+        const contentType = event.headers['Content-Type'];
+        if (contentType.includes('multipart/form-data')) {
+            const form = new formidable.IncomingForm();
+            form.parse(event, (err, fields, files) => {
+                if (err) {
+                    callback(null, {
+                      statusCode: 500,
+                      body: JSON.stringify({ message: 'Error parsing form data' })
+                    });
+                    return;
+                  }
+                
+                const body = files.file[0];  // Assuming file field is named 'file'
+                const ctype = body.type;
+            });
+        } else {
+            const body = event.body;
+            const cType = 'application/json';
+        }
         const jobId = uuidv1(); // Generate a job ID
         // Upload the JSON data to S3
         const s3Params = {
             Bucket: process.env.BUCKET_NAME, // Your S3 bucket name , configure as Lamda Environment Variables
-            Key: `data/${jobId}_${type}.json`, // Unique key for the file
-            Body: JSON.stringify(body),
-            ContentType: 'application/json'
+            Key: `${orgId}/data/${jobId}_${type}.json`, // Unique key for the file
+            Body: body,
+            ContentType: cType
         };
         const s3Response = await S3.putObject(s3Params).promise();
 
         // Enqueue the job in SQS with the S3 URL and save jobId in db,  use orgId in sqs consumer to find db
         const params = {
-            MessageBody: JSON.stringify({ "jobId" : jobId, "s3Path": `/data/${jobId}.json`, "orgId": orgId }),
+            MessageBody: JSON.stringify({ "jobId" : jobId, "type": `${type}`, "s3Path": `${orgId}/data/${jobId}_${type}.json`, "orgId": orgId }),
             QueueUrl: process.env.QUEUE_URL, // configure as Lamda Environment Variables
         };
 

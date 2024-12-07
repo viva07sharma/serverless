@@ -14,8 +14,14 @@ API Gateway -> Lambda -> SQS (insert message into sqs), S3 (data uploaded) -> re
 SQS message will be processed on EC2/ECS
 
 #Installation
-for app -> npm install mysql2 uuid ioredis
+nvm list
+nvm use v20.17.0
+for app -> npm install mysql2 uuid ioredis formidable
+npm install @aws-sdk/client-s3 @aws-sdk/client-sqs
+
+
 for auth -> npm install jsonwebtoken mysql2 ioredis
+npm install @aws-sdk/client-s3 @aws-sdk/client-sqs
 
 
 #Packaging

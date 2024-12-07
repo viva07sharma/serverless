@@ -1,0 +1,8 @@
+{
+  "dependencies": {
+    "formidable": "^3.5.1",
+    "ioredis": "^5.4.1",
+    "mysql2": "^3.11.3",
+    "uuid": "^10.0.0"
+  }
+}
